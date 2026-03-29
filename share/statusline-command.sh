@@ -7,6 +7,7 @@ input=$(cat)
 model=$(echo "$input" | jq -r '.model.display_name // "Claude"')
 used_pct=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 context_window_size=$(echo "$input" | jq -r '.context_window.context_window_size // 200000')
+session_cwd=$(echo "$input" | jq -r '.cwd // empty')
 
 # Cache fields
 cache_read=$(echo "$input" | jq -r '.context_window.current_usage.cache_read_input_tokens // 0')
@@ -112,7 +113,20 @@ if [ -n "$cache_part" ] || [ -n "$cost_part" ]; then
   printf "${DIM}%s${RESET}\n" "$line2"
 fi
 
-# ── Line 3: warning (only when >= 70%) ──────────────────────────────────────
+# ── Line 3: cwd + git branch ────────────────────────────────────────────────
+if [ -n "$session_cwd" ]; then
+  # Shorten home prefix to ~
+  display_cwd="${session_cwd/#$HOME/~}"
+  # Get git branch if cwd is a git repo
+  git_branch=$(git -C "$session_cwd" rev-parse --abbrev-ref HEAD 2>/dev/null)
+  if [ -n "$git_branch" ]; then
+    printf "${DIM}%s [%s]${RESET}\n" "$display_cwd" "$git_branch"
+  else
+    printf "${DIM}%s${RESET}\n" "$display_cwd"
+  fi
+fi
+
+# ── Line 4: warning (only when >= 70%) ──────────────────────────────────────
 if [ "$tier" = "warning" ]; then
   printf "${RED}⚠ Context %d%% full — consider summarizing and starting a new session.${RESET}\n" "$pct_int"
 elif [ "$tier" = "critical" ]; then

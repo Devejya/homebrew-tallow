@@ -129,6 +129,35 @@ plain() {
   [[ "$(plain)" != *'$'* ]]
 }
 
+# ── CWD + git branch ─────────────────────────────────────────────────────────
+
+@test "shows cwd when provided" {
+  run bash "$SCRIPT" <<< '{"model":{"display_name":"M"},"cwd":"/tmp/test-project","context_window":{"used_percentage":10,"current_usage":{"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"input_tokens":100,"output_tokens":0}}}'
+  [[ "$(plain)" == *"/tmp/test-project"* ]]
+}
+
+@test "shortens home directory to tilde" {
+  run bash "$SCRIPT" <<< "{\"model\":{\"display_name\":\"M\"},\"cwd\":\"$HOME/projects/foo\",\"context_window\":{\"used_percentage\":10,\"current_usage\":{\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0,\"input_tokens\":100,\"output_tokens\":0}}}"
+  [[ "$(plain)" == *"~/projects/foo"* ]]
+}
+
+@test "omits cwd line when cwd missing" {
+  run bash "$SCRIPT" <<< '{"model":{"display_name":"M"},"context_window":{"used_percentage":10,"current_usage":{"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"input_tokens":100,"output_tokens":0}}}'
+  local lines
+  lines=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g' | grep -c '.')
+  # Should have 2 lines: main line + cache line (no cwd line)
+  [ "$lines" -le 2 ]
+}
+
+@test "shows git branch in a git repo" {
+  # Use the repo we're in (this test file lives inside a git repo)
+  local repo_dir
+  repo_dir=$(cd "$BATS_TEST_DIRNAME/.." && pwd)
+  run bash "$SCRIPT" <<< "{\"model\":{\"display_name\":\"M\"},\"cwd\":\"$repo_dir\",\"context_window\":{\"used_percentage\":10,\"current_usage\":{\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0,\"input_tokens\":100,\"output_tokens\":0}}}"
+  [[ "$(plain)" == *"["* ]]
+  [[ "$(plain)" == *"]"* ]]
+}
+
 # ── Warning tiers ─────────────────────────────────────────────────────────────
 
 @test "no warning below 70%" {
