@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
-# Claude Code status line script
-# Format: Model | [████░░░░] X% | X/200k tokens | Cache: X% | $X.XX
+# Claude Code status line — semantic gradient color scheme
+# Wraps dynamically based on terminal width.
 
 input=$(cat)
 
 model=$(echo "$input" | jq -r '.model.display_name // "Claude"')
 used_pct=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 context_window_size=$(echo "$input" | jq -r '.context_window.context_window_size // 200000')
-session_cwd=$(echo "$input" | jq -r '.cwd // empty')
 
-# Cache fields
+# CWD and git branch
+cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // ""')
+display_cwd=$(echo "$cwd" | sed "s|^$HOME|~|")
+branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
+if [ -n "$branch" ]; then
+  location="${display_cwd} (${branch})"
+else
+  location="$display_cwd"
+fi
+
+# Token fields
 cache_read=$(echo "$input" | jq -r '.context_window.current_usage.cache_read_input_tokens // 0')
 cache_creation=$(echo "$input" | jq -r '.context_window.current_usage.cache_creation_input_tokens // 0')
 input_tokens=$(echo "$input" | jq -r '.context_window.current_usage.input_tokens // 0')
@@ -18,115 +27,124 @@ output_tokens=$(echo "$input" | jq -r '.context_window.current_usage.output_toke
 # Cost
 total_cost=$(echo "$input" | jq -r '.cost.total_cost_usd // empty')
 
-# ── Color codes (using $'...' for proper escape interpretation) ─────────────
+# ── Color codes ───────────────────────────────────────────────────────────────
+ESC=$'\033'
 RESET=$'\033[0m'
-YELLOW=$'\033[33m'
+DIM=$'\033[2m'
+BOLD=$'\033[1m'
 RED=$'\033[31m'
 BRIGHT_RED=$'\033[1;31m'
-DIM=$'\033[2m'
+GREEN=$'\033[32m'
+YELLOW=$'\033[33m'
 
-# ── Determine color tier ─────────────────────────────────────────────────────
-if [ -z "$used_pct" ]; then
-  bar_color=""
-  tier="none"
-else
+# ── Gradient palette (20 slots, green → lime → yellow → orange → red) ────────
+PALETTE="46 46 82 82 118 118 154 154 190 190 226 226 220 220 214 214 208 202 196 196"
+
+palette_color() {
+  echo "$PALETTE" | tr ' ' '\n' | sed -n "$(($1+1))p"
+}
+
+# ── Warning tier ──────────────────────────────────────────────────────────────
+tier="none"; pct_int=0
+if [ -n "$used_pct" ]; then
   pct_int=$(printf '%.0f' "$used_pct")
-  if [ "$pct_int" -ge 90 ]; then
-    bar_color="$BRIGHT_RED"
-    tier="critical"
-  elif [ "$pct_int" -ge 70 ]; then
-    bar_color="$RED"
-    tier="warning"
-  elif [ "$pct_int" -ge 50 ]; then
-    bar_color="$YELLOW"
-    tier="caution"
-  else
-    bar_color=""
-    tier="ok"
-  fi
+  [ "$pct_int" -ge 90 ] && tier="critical"
+  [ "$pct_int" -ge 70 ] && [ "$pct_int" -lt 90 ] && tier="warning"
 fi
 
-# ── Cache hit rate ──────────────────────────────────────────────────────────
+# ── Cache hit rate + color ────────────────────────────────────────────────────
 cache_total=$((cache_read + cache_creation + input_tokens))
+cache_part=""
 if [ "$cache_total" -gt 0 ]; then
   cache_pct=$(awk "BEGIN {printf \"%.0f\", ($cache_read / $cache_total) * 100}")
-  cache_part=" | Cache: ${cache_pct}%"
-else
-  cache_part=""
+  if   [ "$cache_pct" -ge 80 ]; then cache_color="$GREEN"
+  elif [ "$cache_pct" -ge 30 ]; then cache_color="$YELLOW"
+  else                                cache_color="$RED"
+  fi
+  cache_part="${cache_color}Cache: ${cache_pct}%${RESET}"
 fi
 
-# ── Cost ────────────────────────────────────────────────────────────────────
+# ── Cost + color ──────────────────────────────────────────────────────────────
+cost_part=""
 if [ -n "$total_cost" ]; then
-  cost_part=" | \$$(printf '%.2f' "$total_cost")"
-else
-  cost_part=""
+  if   awk "BEGIN {exit !($total_cost < 3)}"; then cost_color="$GREEN"
+  elif awk "BEGIN {exit !($total_cost < 5)}"; then cost_color="$YELLOW"
+  else                                             cost_color="$RED"
+  fi
+  cost_part="${cost_color}\$$(printf '%.2f' "$total_cost")${RESET}"
 fi
 
-# ── Build progress bar (width = 20 chars) ────────────────────────────────────
+# ── Format window size ────────────────────────────────────────────────────────
+if [ "$context_window_size" -ge 1000 ]; then
+  window_display=$(awk "BEGIN {v=$context_window_size/1000; if(v==int(v)) printf \"%dk\",v; else printf \"%.1fk\",v}")
+else
+  window_display="$context_window_size"
+fi
+
+# ── Build gradient progress bar ───────────────────────────────────────────────
 BAR_WIDTH=20
+pct_label="n/a"; token_display="0"; pct_color=""; bar_filled=""; bar_empty=""
+
 if [ -n "$used_pct" ]; then
   filled=$(echo "$used_pct $BAR_WIDTH" | awk '{printf "%d", ($1/100)*$2 + 0.5}')
   [ "$filled" -gt "$BAR_WIDTH" ] && filled=$BAR_WIDTH
-  [ "$filled" -lt 0 ] && filled=0
+  [ "$filled" -lt 0 ]           && filled=0
   empty=$((BAR_WIDTH - filled))
 
-  bar_filled=""
-  for ((i=0; i<filled; i++)); do bar_filled+="█"; done
-  bar_empty=""
-  for ((i=0; i<empty; i++)); do bar_empty+="░"; done
+  for ((i=0; i<filled; i++)); do
+    c=$(palette_color $i)
+    bar_filled+="${ESC}[38;5;${c}m█${RESET}"
+  done
+  for ((i=0; i<empty; i++)); do bar_empty+="${DIM}░${RESET}"; done
 
-  # Calculate used tokens from current_usage (Method 2: exact sum)
+  if [ "$filled" -gt 0 ]; then
+    pc=$(palette_color $((filled-1)))
+    pct_color="${ESC}[38;5;${pc}m"
+  fi
+
   used_tokens=$((input_tokens + cache_creation + cache_read + output_tokens))
-  # Format token count (e.g., 42000 -> 42k, 1500 -> 1.5k, 200000 -> 200k)
   if [ "$used_tokens" -ge 1000 ]; then
-    token_display=$(awk "BEGIN {v=$used_tokens/1000; if (v==int(v)) printf \"%dk\", v; else printf \"%.1fk\", v}")
+    token_display=$(awk "BEGIN {v=$used_tokens/1000; if(v==int(v)) printf \"%dk\",v; else printf \"%.1fk\",v}")
   else
-    token_display="${used_tokens}"
+    token_display="$used_tokens"
   fi
-
-  # Format context window size for display (e.g., 200000 -> 200k)
-  if [ "$context_window_size" -ge 1000 ]; then
-    window_display=$(awk "BEGIN {v=$context_window_size/1000; if (v==int(v)) printf \"%dk\", v; else printf \"%.1fk\", v}")
-  else
-    window_display="${context_window_size}"
-  fi
-
   pct_label=$(printf '%.0f%%' "$used_pct")
-
-  # Line 1: Model | [bar] X% | X/200k tokens
-  printf "${bar_color}%s${RESET} | ${bar_color}[%s${DIM}%s${RESET}${bar_color}]${RESET} ${bar_color}%s${RESET} | ${bar_color}%s/%s tokens${RESET}\n" \
-    "$model" "$bar_filled" "$bar_empty" "$pct_label" "$token_display" "$window_display"
 else
-  # Format context window size for empty state too
-  if [ "$context_window_size" -ge 1000 ]; then
-    window_display=$(awk "BEGIN {v=$context_window_size/1000; if (v==int(v)) printf \"%dk\", v; else printf \"%.1fk\", v}")
-  else
-    window_display="${context_window_size}"
-  fi
-  printf "%s | ${DIM}[░░░░░░░░░░░░░░░░░░░░] 0%% | 0/%s tokens${RESET}\n" "$model" "$window_display"
+  for ((i=0; i<BAR_WIDTH; i++)); do bar_empty+="${DIM}░${RESET}"; done
+  pct_label="0%"; token_display="0"
 fi
 
-# ── Line 2: Cache + Cost ───────────────────────────────────────────────────
+# ── Terminal width & layout decision ─────────────────────────────────────────
+cols=$(tput cols 2>/dev/null || echo 200)
+
+# Visible width of the bar line without location:
+# "Model | [BAR] PCT | TOKEN/WINDOW tokens"
+bar_line_bare=$(( ${#model} + 3 + 2 + BAR_WIDTH + 2 + ${#pct_label} + 3 + ${#token_display} + 1 + ${#window_display} + 7 ))
+# Visible width with location inline:
+bar_line_with_loc=$(( bar_line_bare + 3 + ${#location} ))
+
+# ── Output ────────────────────────────────────────────────────────────────────
+if [ "$bar_line_with_loc" -le "$cols" ]; then
+  # Everything fits on one line
+  printf "${BOLD}%s${RESET} | ${DIM}%s${RESET} | [%s%s] ${pct_color}%s${RESET} | ${pct_color}%s/%s tokens${RESET}\n" \
+    "$model" "$location" "$bar_filled" "$bar_empty" "$pct_label" "$token_display" "$window_display"
+else
+  # Location wraps to its own line
+  printf "${BOLD}%s${RESET} | [%s%s] ${pct_color}%s${RESET} | ${pct_color}%s/%s tokens${RESET}\n" \
+    "$model" "$bar_filled" "$bar_empty" "$pct_label" "$token_display" "$window_display"
+  [ -n "$location" ] && printf "${DIM}%s${RESET}\n" "$location"
+fi
+
+# ── Cache + Cost ──────────────────────────────────────────────────────────────
 if [ -n "$cache_part" ] || [ -n "$cost_part" ]; then
-  # Strip leading " | " from first part
-  line2="${cache_part# | }${cost_part}"
-  printf "${DIM}%s${RESET}\n" "$line2"
-fi
-
-# ── Line 3: cwd + git branch ────────────────────────────────────────────────
-if [ -n "$session_cwd" ]; then
-  # Shorten home prefix to ~
-  display_cwd="${session_cwd/#$HOME/~}"
-  # Get git branch if cwd is a git repo
-  git_branch=$(git -C "$session_cwd" rev-parse --abbrev-ref HEAD 2>/dev/null)
-  if [ -n "$git_branch" ]; then
-    printf "${DIM}%s [%s]${RESET}\n" "$display_cwd" "$git_branch"
+  if [ -n "$cache_part" ] && [ -n "$cost_part" ]; then
+    printf "%s | %s\n" "$cache_part" "$cost_part"
   else
-    printf "${DIM}%s${RESET}\n" "$display_cwd"
+    printf "%s\n" "${cache_part}${cost_part}"
   fi
 fi
 
-# ── Line 4: warning (only when >= 70%) ──────────────────────────────────────
+# ── Warning ───────────────────────────────────────────────────────────────────
 if [ "$tier" = "warning" ]; then
   printf "${RED}⚠ Context %d%% full — consider summarizing and starting a new session.${RESET}\n" "$pct_int"
 elif [ "$tier" = "critical" ]; then
