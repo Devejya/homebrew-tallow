@@ -1,10 +1,10 @@
 class ClaudeTallow < Formula
   desc "Status line for Claude Code — shows model, tokens, cache hit rate, and session cost"
   homepage "https://github.com/Devejya/homebrew-tallow"
-  url "https://github.com/Devejya/homebrew-tallow/archive/refs/tags/v1.0.2.tar.gz"
-  sha256 "aae92bcbcf4fb9fd33ef1f57642eb5bf835fccbc6b55b858aac119a2b358b2fc"
+  url "https://github.com/Devejya/homebrew-tallow/archive/refs/tags/v1.0.3.tar.gz"
+  sha256 "886ec9a43ed6adaef5e6f1c2ca07088313ffd0c2044d287729d6ffd6f6fad2a4"
   license "MIT"
-  version "1.0.2"
+  version "1.0.3"
 
   depends_on "jq"
 
