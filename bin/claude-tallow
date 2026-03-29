@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# claude-tallow — Claude Code status line installer
+# https://github.com/Devejya/homebrew-tallow
+
+set -euo pipefail
+
+BREW_PREFIX="$(brew --prefix 2>/dev/null || echo "/opt/homebrew")"
+SCRIPT_SRC="$BREW_PREFIX/share/claude-tallow/statusline-command.sh"
+SCRIPT_DEST="$HOME/.claude/statusline-command.sh"
+SETTINGS="$HOME/.claude/settings.json"
+CLAUDE_DIR="$HOME/.claude"
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+green()  { printf '\033[32m%s\033[0m\n' "$*"; }
+yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
+red()    { printf '\033[31m%s\033[0m\n' "$*"; }
+bold()   { printf '\033[1m%s\033[0m\n' "$*"; }
+
+check_jq() {
+  if ! command -v jq &>/dev/null; then
+    red "Error: jq is required but not installed."
+    echo "Install it with: brew install jq"
+    exit 1
+  fi
+}
+
+# ── Commands ─────────────────────────────────────────────────────────────────
+
+cmd_install() {
+  check_jq
+
+  # Ensure ~/.claude exists
+  mkdir -p "$CLAUDE_DIR"
+
+  # Copy the statusline script
+  cp "$SCRIPT_SRC" "$SCRIPT_DEST"
+  chmod +x "$SCRIPT_DEST"
+
+  # Patch settings.json
+  local new_entry
+  new_entry='{"statusLine":{"type":"command","command":"bash ~/.claude/statusline-command.sh"}}'
+
+  if [ -f "$SETTINGS" ]; then
+    # Merge without clobbering existing keys
+    local tmp
+    tmp=$(mktemp)
+    jq ". * $new_entry" "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+  else
+    echo "$new_entry" | jq '.' > "$SETTINGS"
+  fi
+
+  green "✓ claude-tallow installed."
+  echo "  Status line will appear in new Claude Code sessions."
+  echo "  To remove: claude-tallow uninstall"
+}
+
+cmd_uninstall() {
+  check_jq
+
+  # Remove script
+  if [ -f "$SCRIPT_DEST" ]; then
+    rm "$SCRIPT_DEST"
+    green "✓ Removed $SCRIPT_DEST"
+  else
+    yellow "⚠ Script not found at $SCRIPT_DEST — skipping."
+  fi
+
+  # Remove statusLine key from settings.json
+  if [ -f "$SETTINGS" ]; then
+    local tmp
+    tmp=$(mktemp)
+    jq 'del(.statusLine)' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+    green "✓ Removed statusLine from $SETTINGS"
+  else
+    yellow "⚠ $SETTINGS not found — skipping."
+  fi
+
+  green "✓ claude-tallow uninstalled."
+}
+
+cmd_update() {
+  if [ ! -f "$SCRIPT_DEST" ]; then
+    red "Error: claude-tallow is not installed. Run: claude-tallow install"
+    exit 1
+  fi
+
+  cp "$SCRIPT_SRC" "$SCRIPT_DEST"
+  chmod +x "$SCRIPT_DEST"
+  green "✓ Status line script updated to latest version."
+}
+
+cmd_status() {
+  bold "claude-tallow status"
+  echo ""
+
+  # Script
+  if [ -f "$SCRIPT_DEST" ]; then
+    green "  ✓ Script installed: $SCRIPT_DEST"
+  else
+    red "  ✗ Script not installed ($SCRIPT_DEST not found)"
+  fi
+
+  # settings.json
+  if [ -f "$SETTINGS" ]; then
+    local has_entry
+    has_entry=$(jq -r '.statusLine // empty' "$SETTINGS" 2>/dev/null)
+    if [ -n "$has_entry" ]; then
+      green "  ✓ settings.json configured: $SETTINGS"
+    else
+      red "  ✗ statusLine key missing from $SETTINGS"
+    fi
+  else
+    red "  ✗ $SETTINGS not found"
+  fi
+
+  echo ""
+  if [ -f "$SCRIPT_DEST" ] && [ -f "$SETTINGS" ]; then
+    local has_entry
+    has_entry=$(jq -r '.statusLine // empty' "$SETTINGS" 2>/dev/null)
+    if [ -n "$has_entry" ]; then
+      green "  Status: fully installed and active"
+    else
+      yellow "  Status: script present but settings.json not configured — run: claude-tallow install"
+    fi
+  else
+    yellow "  Status: not installed — run: claude-tallow install"
+  fi
+}
+
+cmd_help() {
+  bold "claude-tallow"
+  echo "  Status line for Claude Code — shows model, tokens, cache hit rate, and session cost."
+  echo ""
+  echo "Usage:"
+  echo "  claude-tallow install    Install and configure the status line"
+  echo "  claude-tallow uninstall  Remove the status line"
+  echo "  claude-tallow update     Update the script to the latest installed version"
+  echo "  claude-tallow status     Show installation status"
+  echo "  claude-tallow help       Show this help message"
+}
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+case "${1:-help}" in
+  install)   cmd_install ;;
+  uninstall) cmd_uninstall ;;
+  update)    cmd_update ;;
+  status)    cmd_status ;;
+  help|--help|-h) cmd_help ;;
+  *)
+    red "Unknown command: $1"
+    echo ""
+    cmd_help
+    exit 1
+    ;;
+esac
