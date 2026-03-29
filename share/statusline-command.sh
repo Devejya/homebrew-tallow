@@ -84,14 +84,21 @@ if [ -n "$used_pct" ]; then
 
   pct_label=$(printf '%.0f%%' "$used_pct")
 
-  # Line 1: Model | [bar] X% | X/200k tokens | Cache: X% | $X.XX
-  printf "${bar_color}%s${RESET} | ${bar_color}[%s${DIM}%s${RESET}${bar_color}]${RESET} ${bar_color}%s${RESET} | ${bar_color}%s/200k tokens${RESET}%s%s\n" \
-    "$model" "$bar_filled" "$bar_empty" "$pct_label" "$token_display" "$cache_part" "$cost_part"
+  # Line 1: Model | [bar] X% | X/200k tokens
+  printf "${bar_color}%s${RESET} | ${bar_color}[%s${DIM}%s${RESET}${bar_color}]${RESET} ${bar_color}%s${RESET} | ${bar_color}%s/200k tokens${RESET}\n" \
+    "$model" "$bar_filled" "$bar_empty" "$pct_label" "$token_display"
 else
-  printf "%s | ${DIM}[░░░░░░░░░░░░░░░░░░░░] 0%% | 0/200k tokens${RESET}%s%s\n" "$model" "$cache_part" "$cost_part"
+  printf "%s | ${DIM}[░░░░░░░░░░░░░░░░░░░░] 0%% | 0/200k tokens${RESET}\n" "$model"
 fi
 
-# ── Line 2: warning (only when >= 70%) ──────────────────────────────────────
+# ── Line 2: Cache + Cost ───────────────────────────────────────────────────
+if [ -n "$cache_part" ] || [ -n "$cost_part" ]; then
+  # Strip leading " | " from first part
+  line2="${cache_part# | }${cost_part}"
+  printf "${DIM}%s${RESET}\n" "$line2"
+fi
+
+# ── Line 3: warning (only when >= 70%) ──────────────────────────────────────
 if [ "$tier" = "warning" ]; then
   printf "${RED}⚠ Context %d%% full — consider summarizing and starting a new session.${RESET}\n" "$pct_int"
 elif [ "$tier" = "critical" ]; then
