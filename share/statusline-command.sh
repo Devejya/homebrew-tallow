@@ -37,8 +37,8 @@ BRIGHT_RED=$'\033[1;31m'
 GREEN=$'\033[32m'
 YELLOW=$'\033[33m'
 
-# ── Gradient palette (20 slots, green → lime → yellow → orange → red) ────────
-PALETTE="46 46 82 82 118 118 154 154 190 190 226 226 220 220 214 214 208 202 196 196"
+# ── Gradient palette (10 slots, green → lime → yellow → orange → red) ────────
+PALETTE="46 82 118 154 190 226 220 214 202 196"
 
 palette_color() {
   echo "$PALETTE" | tr ' ' '\n' | sed -n "$(($1+1))p"
@@ -82,7 +82,7 @@ else
 fi
 
 # ── Build gradient progress bar ───────────────────────────────────────────────
-BAR_WIDTH=20
+BAR_WIDTH=10
 pct_label="n/a"; token_display="0"; pct_color=""; bar_filled=""; bar_empty=""
 
 if [ -n "$used_pct" ]; then
@@ -114,26 +114,12 @@ else
   pct_label="0%"; token_display="0"
 fi
 
-# ── Terminal width & layout decision ─────────────────────────────────────────
-cols=$(tput cols 2>/dev/null || echo 200)
-
-# Visible width of the bar line without location:
-# "Model | [BAR] PCT | TOKEN/WINDOW tokens"
-bar_line_bare=$(( ${#model} + 3 + 2 + BAR_WIDTH + 2 + ${#pct_label} + 3 + ${#token_display} + 1 + ${#window_display} + 7 ))
-# Visible width with location inline:
-bar_line_with_loc=$(( bar_line_bare + 3 + ${#location} ))
-
 # ── Output ────────────────────────────────────────────────────────────────────
-if [ "$bar_line_with_loc" -le "$cols" ]; then
-  # Everything fits on one line
-  printf "${BOLD}%s${RESET} | ${DIM}%s${RESET} | [%s%s] ${pct_color}%s${RESET} | ${pct_color}%s/%s tokens${RESET}\n" \
-    "$model" "$location" "$bar_filled" "$bar_empty" "$pct_label" "$token_display" "$window_display"
-else
-  # Location wraps to its own line
-  printf "${BOLD}%s${RESET} | [%s%s] ${pct_color}%s${RESET} | ${pct_color}%s/%s tokens${RESET}\n" \
-    "$model" "$bar_filled" "$bar_empty" "$pct_label" "$token_display" "$window_display"
-  [ -n "$location" ] && printf "${DIM}%s${RESET}\n" "$location"
-fi
+# Always use multi-line layout (~60 chars line 1) since terminal width
+# cannot be detected reliably from a status line subprocess.
+printf "${BOLD}%s${RESET} | [%s%s] ${pct_color}%s${RESET} | ${pct_color}%s/%s${RESET}\n" \
+  "$model" "$bar_filled" "$bar_empty" "$pct_label" "$token_display" "$window_display"
+[ -n "$location" ] && printf "${DIM}%s${RESET}\n" "$location"
 
 # ── Cache + Cost ──────────────────────────────────────────────────────────────
 if [ -n "$cache_part" ] || [ -n "$cost_part" ]; then
