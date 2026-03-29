@@ -6,12 +6,13 @@ input=$(cat)
 
 model=$(echo "$input" | jq -r '.model.display_name // "Claude"')
 used_pct=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
-total_tokens=200000
+context_window_size=$(echo "$input" | jq -r '.context_window.context_window_size // 200000')
 
 # Cache fields
 cache_read=$(echo "$input" | jq -r '.context_window.current_usage.cache_read_input_tokens // 0')
 cache_creation=$(echo "$input" | jq -r '.context_window.current_usage.cache_creation_input_tokens // 0')
 input_tokens=$(echo "$input" | jq -r '.context_window.current_usage.input_tokens // 0')
+output_tokens=$(echo "$input" | jq -r '.context_window.current_usage.output_tokens // 0')
 
 # Cost
 total_cost=$(echo "$input" | jq -r '.cost.total_cost_usd // empty')
@@ -73,8 +74,8 @@ if [ -n "$used_pct" ]; then
   bar_empty=""
   for ((i=0; i<empty; i++)); do bar_empty+="░"; done
 
-  # Calculate used tokens from percentage
-  used_tokens=$(echo "$used_pct $total_tokens" | awk '{printf "%d", ($1/100)*$2 + 0.5}')
+  # Calculate used tokens from current_usage (Method 2: exact sum)
+  used_tokens=$((input_tokens + cache_creation + cache_read + output_tokens))
   # Format token count (e.g., 42000 -> 42k, 1500 -> 1.5k, 200000 -> 200k)
   if [ "$used_tokens" -ge 1000 ]; then
     token_display=$(awk "BEGIN {v=$used_tokens/1000; if (v==int(v)) printf \"%dk\", v; else printf \"%.1fk\", v}")
@@ -82,13 +83,26 @@ if [ -n "$used_pct" ]; then
     token_display="${used_tokens}"
   fi
 
+  # Format context window size for display (e.g., 200000 -> 200k)
+  if [ "$context_window_size" -ge 1000 ]; then
+    window_display=$(awk "BEGIN {v=$context_window_size/1000; if (v==int(v)) printf \"%dk\", v; else printf \"%.1fk\", v}")
+  else
+    window_display="${context_window_size}"
+  fi
+
   pct_label=$(printf '%.0f%%' "$used_pct")
 
   # Line 1: Model | [bar] X% | X/200k tokens
-  printf "${bar_color}%s${RESET} | ${bar_color}[%s${DIM}%s${RESET}${bar_color}]${RESET} ${bar_color}%s${RESET} | ${bar_color}%s/200k tokens${RESET}\n" \
-    "$model" "$bar_filled" "$bar_empty" "$pct_label" "$token_display"
+  printf "${bar_color}%s${RESET} | ${bar_color}[%s${DIM}%s${RESET}${bar_color}]${RESET} ${bar_color}%s${RESET} | ${bar_color}%s/%s tokens${RESET}\n" \
+    "$model" "$bar_filled" "$bar_empty" "$pct_label" "$token_display" "$window_display"
 else
-  printf "%s | ${DIM}[░░░░░░░░░░░░░░░░░░░░] 0%% | 0/200k tokens${RESET}\n" "$model"
+  # Format context window size for empty state too
+  if [ "$context_window_size" -ge 1000 ]; then
+    window_display=$(awk "BEGIN {v=$context_window_size/1000; if (v==int(v)) printf \"%dk\", v; else printf \"%.1fk\", v}")
+  else
+    window_display="${context_window_size}"
+  fi
+  printf "%s | ${DIM}[░░░░░░░░░░░░░░░░░░░░] 0%% | 0/%s tokens${RESET}\n" "$model" "$window_display"
 fi
 
 # ── Line 2: Cache + Cost ───────────────────────────────────────────────────
