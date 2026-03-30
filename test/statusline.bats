@@ -58,7 +58,7 @@ plain() {
 
 @test "shows empty bar when context window missing" {
   run bash "$SCRIPT" <<< '{"model":{"display_name":"M"}}'
-  [[ "$(plain)" == *"[░░░░░░░░░░░░░░░░░░░░]"* ]]
+  [[ "$(plain)" == *"[░░░░░░░░░░]"* ]]
 }
 
 # ── Token formatting (Method 2: current_usage sum) ───────────────────────────

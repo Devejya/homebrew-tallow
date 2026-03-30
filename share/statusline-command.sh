@@ -11,11 +11,10 @@ context_window_size=$(echo "$input" | jq -r '.context_window.context_window_size
 # CWD and git branch
 cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // ""')
 display_cwd=$(echo "$cwd" | sed "s|^$HOME|~|")
-branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
-if [ -n "$branch" ]; then
-  location="${display_cwd} (${branch})"
-else
-  location="$display_cwd"
+location=""
+if [ -n "$cwd" ]; then
+  branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
+  location="${display_cwd}${branch:+ ($branch)}"
 fi
 
 # Token fields
@@ -117,7 +116,7 @@ fi
 # ── Output ────────────────────────────────────────────────────────────────────
 # Always use multi-line layout (~60 chars line 1) since terminal width
 # cannot be detected reliably from a status line subprocess.
-printf "${BOLD}%s${RESET} | [%s%s] ${pct_color}%s${RESET} | ${pct_color}%s/%s${RESET}\n" \
+printf "${BOLD}%s${RESET} | [%s%s] ${pct_color}%s${RESET} | ${pct_color}%s/%s tokens${RESET}\n" \
   "$model" "$bar_filled" "$bar_empty" "$pct_label" "$token_display" "$window_display"
 [ -n "$location" ] && printf "${DIM}%s${RESET}\n" "$location"
 
