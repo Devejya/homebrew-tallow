@@ -3,7 +3,7 @@
 A status line for [Claude Code](https://claude.ai/code) that displays model, context usage, cache hit rate, session cost, working directory, and git branch.
 
 ```
-Sonnet 4.6 | [████░░░░░░] 38% | 42.1k/200k
+Sonnet 4.6 | 38% | 42.1k/200k tokens
 ~/Documents/code/my-project (main)
 Cache: 76% | $0.18
 ```
@@ -11,7 +11,7 @@ Cache: 76% | $0.18
 At high context usage:
 
 ```
-Opus 4.6 | [████████░░] 75% | 149.8k/200k
+Opus 4.6 | 75% | 149.8k/200k tokens
 ~/Documents/code/my-project (feature/auth)
 Cache: 84% | $1.43
 ⚠ Context 75% full — consider summarizing and starting a new session.
